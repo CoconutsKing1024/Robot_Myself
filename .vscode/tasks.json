@@ -1,0 +1,77 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Debug",
+			"type": "shell",
+			"command": "cmake",
+			"args": [
+				"--build",
+				"--preset",
+				"Debug"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Download (STM32CubeProgrammer)",
+			"type": "shell",
+			"command": "STM32_Programmer_CLI",
+			"args": [
+				"-c",
+				"port=SWD",
+				"freq=100",
+				"mode=UR",
+				"reset=HWrst",
+				"-w",
+				"${workspaceFolder}/build/Debug/Robot_Myself.elf",
+				"-v",
+				"-rst"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Download (OpenOCD)",
+			"type": "shell",
+			"command": "openocd",
+			"args": [
+				"-f",
+				"interface/stlink.cfg",
+				"-f",
+				"target/stm32f4x.cfg",
+				"-c",
+				"adapter speed 100",
+				"-c",
+				"init",
+				"-c",
+				"reset halt",
+				"-c",
+				"program ${workspaceFolder}/build/Debug/Robot_Myself.elf verify reset exit"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build + Download",
+			"dependsOn": [
+				"Build Debug",
+				"Download (OpenOCD)"
+			],
+			"dependsOrder": "sequence",
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}
