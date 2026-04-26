@@ -81,24 +81,52 @@ static inline int reg_int_cb(struct int_param_s *int_param)
 #include "main.h"
 #include "i2c.h"
 
+static unsigned char s_mpu_addr_override = 0U;
+
 static int stm32_i2c_write(unsigned char slave_addr, unsigned char reg_addr,
     unsigned char length, unsigned char const *data)
 {
-    if (HAL_I2C_Mem_Write(&hi2c3, (uint16_t)(slave_addr << 1), reg_addr,
-        I2C_MEMADD_SIZE_8BIT, (uint8_t *)data, length, 100U) != HAL_OK) {
-        return -1;
+    unsigned char primary_addr = (s_mpu_addr_override != 0U) ? s_mpu_addr_override : slave_addr;
+    unsigned char fallback_addr = (primary_addr == 0x68U) ? 0x69U : 0x68U;
+
+    if (HAL_I2C_Mem_Write(&hi2c3, (uint16_t)(primary_addr << 1), reg_addr,
+        I2C_MEMADD_SIZE_8BIT, (uint8_t *)data, length, 100U) == HAL_OK) {
+        s_mpu_addr_override = primary_addr;
+        return 0;
     }
-    return 0;
+
+    if ((slave_addr == 0x68U) || (slave_addr == 0x69U)) {
+        if (HAL_I2C_Mem_Write(&hi2c3, (uint16_t)(fallback_addr << 1), reg_addr,
+            I2C_MEMADD_SIZE_8BIT, (uint8_t *)data, length, 100U) == HAL_OK) {
+            s_mpu_addr_override = fallback_addr;
+            return 0;
+        }
+    }
+
+    return -1;
 }
 
 static int stm32_i2c_read(unsigned char slave_addr, unsigned char reg_addr,
     unsigned char length, unsigned char *data)
 {
-    if (HAL_I2C_Mem_Read(&hi2c3, (uint16_t)(slave_addr << 1), reg_addr,
-        I2C_MEMADD_SIZE_8BIT, data, length, 100U) != HAL_OK) {
-        return -1;
+    unsigned char primary_addr = (s_mpu_addr_override != 0U) ? s_mpu_addr_override : slave_addr;
+    unsigned char fallback_addr = (primary_addr == 0x68U) ? 0x69U : 0x68U;
+
+    if (HAL_I2C_Mem_Read(&hi2c3, (uint16_t)(primary_addr << 1), reg_addr,
+        I2C_MEMADD_SIZE_8BIT, data, length, 100U) == HAL_OK) {
+        s_mpu_addr_override = primary_addr;
+        return 0;
     }
-    return 0;
+
+    if ((slave_addr == 0x68U) || (slave_addr == 0x69U)) {
+        if (HAL_I2C_Mem_Read(&hi2c3, (uint16_t)(fallback_addr << 1), reg_addr,
+            I2C_MEMADD_SIZE_8BIT, data, length, 100U) == HAL_OK) {
+            s_mpu_addr_override = fallback_addr;
+            return 0;
+        }
+    }
+
+    return -1;
 }
 
 static int stm32_get_ms(unsigned long *count)
@@ -763,7 +791,7 @@ int mpu_init(struct int_param_s *int_param)
             st.chip_cfg.accel_half = 0;
         else {
             log_e("Unsupported software product rev %d.\n", rev);
-            return -1;
+            st.chip_cfg.accel_half = 0;
         }
     } else {
         if (i2c_read(st.hw->addr, st.reg->prod_id, 1, data))
@@ -772,7 +800,7 @@ int mpu_init(struct int_param_s *int_param)
         if (!rev) {
             log_e("Product ID read as 0 indicates device is either "
                 "incompatible or an MPU3050.\n");
-            return -1;
+            st.chip_cfg.accel_half = 0;
         } else if (rev == 4) {
             log_i("Half sensitivity part found.\n");
             st.chip_cfg.accel_half = 1;

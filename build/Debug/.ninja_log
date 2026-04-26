@@ -1,7 +1,7 @@
 # ninja log v5
 33	214	1777178861977846513	CMakeFiles/Robot_Myself.dir/Core/Src/stm32f4xx_hal_timebase_tim.c.obj	8ff1588c85ba1490
 227	445	1777178862210535473	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c.obj	b9aa5feabbeef06a
-2	101	1777198033390185897	CMakeFiles/Robot_Myself.dir/Core/Src/core.c.obj	b03ca96b9c898b1f
+2	97	1777202712175896382	CMakeFiles/Robot_Myself.dir/Core/Src/core.c.obj	b03ca96b9c898b1f
 39	350	1777172083059963634	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c.obj	88a58345809bc151
 260	643	1777178862410987361	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c.c.obj	ccdbd24d17144bdc
 36	352	1777172083061977202	CMakeFiles/Robot_Myself.dir/Core/Src/adc.c.obj	a7e548128f36b72d
@@ -13,7 +13,7 @@
 283	338	1777178862106029859	cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir/__/__/Middlewares/Third_Party/FreeRTOS/Source/list.c.obj	7de4fc1f9e5a8075
 263	589	1777178862356627458	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c.obj	4924ac3ddd3be5ae
 294	446	1777178862214228888	cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir/__/__/Middlewares/Third_Party/FreeRTOS/Source/queue.c.obj	94aac453bfc7b091
-2	110	1777198033399470428	CMakeFiles/Robot_Myself.dir/Core/Src/freertos.c.obj	9b32f7a63f66e0ce
+2	115	1777204312071454986	CMakeFiles/Robot_Myself.dir/Core/Src/freertos.c.obj	9b32f7a63f66e0ce
 363	449	1777178862215742747	cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir/__/__/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c.obj	e63a160cf8e1cc6f
 261	491	1777178862258831715	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c_ex.c.obj	adb7472d03d06d87
 32	217	1777178861983552874	CMakeFiles/Robot_Myself.dir/Core/Src/stm32f4xx_it.c.obj	c7e398121c6d0420
@@ -24,7 +24,7 @@
 34	254	1777178862019811676	CMakeFiles/Robot_Myself.dir/Core/Src/syscalls.c.obj	bf6072ecd59957d7
 304	502	1777178862271169474	cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir/__/__/Middlewares/Third_Party/FreeRTOS/Source/tasks.c.obj	144b9086189e7cb
 50	299	1777178862065747783	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c.obj	a688e0e1cd8458bd
-31	373	1777178862138745332	CMakeFiles/Robot_Myself.dir/Core/Src/inv_mpu.c.obj	3fd63c2aac75a2c4
+2	157	1777202445797989013	CMakeFiles/Robot_Myself.dir/Core/Src/inv_mpu.c.obj	3fd63c2aac75a2c4
 2	118	1777196837325093547	CMakeFiles/Robot_Myself.dir/Core/Src/brushless_motor.c.obj	89621d2f0a456026
 30	294	1777178862060474075	CMakeFiles/Robot_Myself.dir/Core/Src/main.c.obj	db5b0ce34b968906
 32	216	1777178861981594079	CMakeFiles/Robot_Myself.dir/Core/Src/usart.c.obj	f945940d8e3b8faf
@@ -38,7 +38,7 @@
 72	263	1777178862030086134	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ramfunc.c.obj	f5f81d30215879a8
 214	470	1777178862235742075	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c.obj	62a851a4c18638a1
 36	392	1777178862158098020	cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir/__/__/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c.obj	e6b99b1a28c67a8b
-110	187	1777198033474244849	Robot_Myself.elf	a13bc49bf2b4a3ea
+115	192	1777204312147442056	Robot_Myself.elf	a13bc49bf2b4a3ea
 2	98	1777179831752669431	CMakeFiles/Robot_Myself.dir/Core/Src/tim.c.obj	89a7a7c9c64996f7
 2	96	1777196200473264747	CMakeFiles/Robot_Myself.dir/Core/Src/steering_engine.c.obj	816f7d5f0d404559
 308	570	1777178862337873354	cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir/__/__/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.c.obj	11032903714857e1

@@ -1,6 +1,7 @@
 #include "core.h"
 
 #include "brushless_motor.h"
+#include "i2c.h"
 #include "inv_mpu.h"
 #include "inv_mpu_dmp_motion_driver.h"
 
@@ -32,6 +33,11 @@ static float g_balance_kd = CORE_BALANCE_KD_DEFAULT;
 static bool g_core_inited = false;
 static bool g_mpu_ready = false;
 static bool g_imu_sample_valid = false;
+static uint32_t g_imu_ok_count = 0U;
+static uint32_t g_imu_fail_count = 0U;
+static uint32_t g_imu_stale_ms = 0U;
+static uint32_t g_imu_init_stage = 0U;
+static int32_t g_imu_init_last_ret = 0;
 
 static float Core_Clamp(float value, float min_value, float max_value)
 {
@@ -92,49 +98,109 @@ static float Core_QuaternionToPitchRad(const long *quat)
 static void Core_InitMpu(void)
 {
   struct int_param_s int_param = {0};
+  uint8_t whoami = 0U;
+  uint32_t i2c68_ok = 0U;
+  uint32_t i2c69_ok = 0U;
+  int ret = 0;
 
-  if (mpu_init(&int_param) != 0)
+  g_imu_init_stage = 1U;
+  g_imu_init_last_ret = 0;
+
+  i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
+  i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
+
+  if ((i2c68_ok == 1U) &&
+      (HAL_I2C_Mem_Read(&hi2c3, (0x68U << 1), 0x75U, I2C_MEMADD_SIZE_8BIT, &whoami, 1U, 20U) == HAL_OK))
   {
-    printf("[CORE] MPU init failed\r\n");
+    printf("[CORE] probe 0x68 whoami=0x%02X\r\n", whoami);
+  }
+  if ((i2c69_ok == 1U) &&
+      (HAL_I2C_Mem_Read(&hi2c3, (0x69U << 1), 0x75U, I2C_MEMADD_SIZE_8BIT, &whoami, 1U, 20U) == HAL_OK))
+  {
+    printf("[CORE] probe 0x69 whoami=0x%02X\r\n", whoami);
+  }
+  printf("[CORE] i2c_probe_imu 0x68=%lu 0x69=%lu\r\n",
+         (unsigned long)i2c68_ok,
+         (unsigned long)i2c69_ok);
+
+  g_imu_init_stage = 2U;
+  ret = mpu_init(&int_param);
+  if (ret != 0)
+  {
+    g_imu_init_stage = 12U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] MPU init failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
-  if (dmp_load_motion_driver_firmware() != 0)
+  g_imu_init_stage = 3U;
+  ret = mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL);
+  if (ret != 0)
   {
-    printf("[CORE] DMP firmware load failed\r\n");
+    g_imu_init_stage = 23U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] MPU sensor enable failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
-  if (dmp_set_orientation(0U) != 0)
+  g_imu_init_stage = 31U;
+  ret = dmp_load_motion_driver_firmware();
+  if (ret != 0)
   {
-    printf("[CORE] DMP orientation set failed\r\n");
+    g_imu_init_stage = 13U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] DMP firmware load failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
-  if (dmp_enable_feature(CORE_DMP_FEATURES) != 0)
+  g_imu_init_stage = 4U;
+  ret = dmp_set_orientation(0U);
+  if (ret != 0)
   {
-    printf("[CORE] DMP feature enable failed\r\n");
+    g_imu_init_stage = 14U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] DMP orientation set failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
-  if (dmp_set_fifo_rate(CORE_DMP_FIFO_RATE_HZ) != 0)
+  g_imu_init_stage = 5U;
+  ret = dmp_enable_feature(CORE_DMP_FEATURES);
+  if (ret != 0)
   {
-    printf("[CORE] DMP fifo rate set failed\r\n");
+    g_imu_init_stage = 15U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] DMP feature enable failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
-  if (mpu_set_dmp_state(1U) != 0)
+  g_imu_init_stage = 6U;
+  ret = dmp_set_fifo_rate(CORE_DMP_FIFO_RATE_HZ);
+  if (ret != 0)
   {
-    printf("[CORE] MPU DMP enable failed\r\n");
+    g_imu_init_stage = 16U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] DMP fifo rate set failed ret=%d\r\n", ret);
     g_mpu_ready = false;
     return;
   }
 
+  g_imu_init_stage = 7U;
+  ret = mpu_set_dmp_state(1U);
+  if (ret != 0)
+  {
+    g_imu_init_stage = 17U;
+    g_imu_init_last_ret = (int32_t)ret;
+    printf("[CORE] MPU DMP enable failed ret=%d\r\n", ret);
+    g_mpu_ready = false;
+    return;
+  }
+
+  g_imu_init_stage = 100U;
   g_mpu_ready = true;
   printf("[CORE] MPU6050 DMP ready\r\n");
 }
@@ -157,6 +223,9 @@ void Core_ControlInit(void)
   g_balance_ki = CORE_BALANCE_KI_DEFAULT;
   g_balance_kd = CORE_BALANCE_KD_DEFAULT;
   g_imu_sample_valid = false;
+  g_imu_ok_count = 0U;
+  g_imu_fail_count = 0U;
+  g_imu_stale_ms = 0U;
   g_core_inited = true;
 }
 
@@ -176,7 +245,17 @@ void Core_ImuUpdate1ms(void)
 
   if (dmp_read_fifo(gyro, accel, quat, &timestamp, &sensors, &more) != 0)
   {
-    g_imu_sample_valid = false;
+    g_imu_fail_count++;
+
+    if (g_imu_stale_ms < 2000U)
+    {
+      g_imu_stale_ms++;
+    }
+    else
+    {
+      /* Long consecutive FIFO failure means sample is stale. */
+      g_imu_sample_valid = false;
+    }
     return;
   }
 
@@ -189,6 +268,8 @@ void Core_ImuUpdate1ms(void)
   g_pitch_rad = Core_NormalizeAngle(Core_QuaternionToPitchRad(quat) - g_pitch_offset_rad);
   g_pitch_deg = g_pitch_rad * 180.0f / CORE_PI;
 
+  g_imu_ok_count++;
+  g_imu_stale_ms = 0U;
   g_imu_sample_valid = true;
 }
 
@@ -282,4 +363,34 @@ void Core_ResetBalanceIntegrator(void)
 {
   g_pitch_integral = 0.0f;
   g_pitch_prev_error = 0.0f;
+}
+
+bool Core_IsImuReady(void)
+{
+  return g_mpu_ready;
+}
+
+bool Core_IsImuSampleValid(void)
+{
+  return g_imu_sample_valid;
+}
+
+uint32_t Core_GetImuOkCount(void)
+{
+  return g_imu_ok_count;
+}
+
+uint32_t Core_GetImuFailCount(void)
+{
+  return g_imu_fail_count;
+}
+
+uint32_t Core_GetImuInitStage(void)
+{
+  return g_imu_init_stage;
+}
+
+int32_t Core_GetImuInitLastRet(void)
+{
+  return g_imu_init_last_ret;
 }
