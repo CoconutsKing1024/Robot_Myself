@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/fanzeny/\u684c\u9762/Robot_Myself/build/Debug/cmake_install.cmake",
-		"/home/fanzeny/\u684c\u9762/Robot_Myself/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

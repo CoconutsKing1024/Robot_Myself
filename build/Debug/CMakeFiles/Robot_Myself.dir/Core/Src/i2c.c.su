@@ -1,5 +1,5 @@
-/home/fanzeny/桌面/Robot_Myself/Core/Src/i2c.c:32:6:MX_I2C1_Init	8	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/i2c.c:61:6:MX_I2C2_Init	8	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/i2c.c:90:6:MX_I2C3_Init	8	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/i2c.c:119:6:HAL_I2C_MspInit	64	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/i2c.c:205:6:HAL_I2C_MspDeInit	16	static
+/home/coco/Robot_Myself/Core/Src/i2c.c:32:6:MX_I2C1_Init	8	static
+/home/coco/Robot_Myself/Core/Src/i2c.c:61:6:MX_I2C2_Init	8	static
+/home/coco/Robot_Myself/Core/Src/i2c.c:90:6:MX_I2C3_Init	8	static
+/home/coco/Robot_Myself/Core/Src/i2c.c:119:6:HAL_I2C_MspInit	64	static
+/home/coco/Robot_Myself/Core/Src/i2c.c:205:6:HAL_I2C_MspDeInit	16	static

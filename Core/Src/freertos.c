@@ -70,6 +70,14 @@ static int8_t g_motor_dir_sign = 1;
 static uint8_t g_uart2_rx_dma_buf[64];
 static uint8_t g_uart2_rx_dma_read_idx = 0U;
 
+typedef enum
+{
+  CONTROL_MODE_BALANCE = 0,
+  CONTROL_MODE_TEST = 1
+} ControlMode;
+
+static volatile ControlMode g_control_mode = CONTROL_MODE_BALANCE;
+
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -120,6 +128,7 @@ static bool ParseSteeringCommand(const char *line, int *percent_value);
 static bool ParsePitchOffsetCommand(const char *line, float *offset_rad);
 static bool ParsePidCommand(const char *line, float *kp, float *ki, float *kd);
 static bool ParsePitchQueryCommand(const char *line);
+static bool ParseControlModeCommand(const char *line, ControlMode *mode);
 static void ProcessUartCommandByte(uint8_t ch);
 static bool PollUartSpeedCommandDma(void);
 
@@ -239,6 +248,7 @@ void StartTask02(void *argument)
   printf("[CMD] send PZ <rad> to set pitch zero\r\n");
   printf("[CMD] send PID <kp> <ki> <kd> to tune balance PID\r\n");
   printf("[CMD] send PID? to query current PID, pitch offset and pitch\r\n");
+  printf("[CMD] send BAL or TEST to switch control mode\r\n");
 
   i2c1_ok = (HAL_I2C_IsDeviceReady(&hi2c1, (0x36U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
   i2c2_ok = (HAL_I2C_IsDeviceReady(&hi2c2, (0x36U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
@@ -274,22 +284,35 @@ void StartTask02(void *argument)
 
     /* task02: all I2C-related reads/control execution. */
     Core_ImuUpdate1ms();
+
+    if (g_control_mode == CONTROL_MODE_TEST)
+    {
+      BLDC_SetTargetSpeedRps(g_speed_cmd_rps);
+      BLDC_SetTargetSpeed2Rps(g_speed_cmd_rps);
+    }
+
     BLDC_ControlStep_1ms();
 
     if (++print_div >= 20U)
     {
       int32_t target_mrps;
-      int32_t speed_mrps;
+            int32_t speed_m1_mrps;
+            int32_t speed_m2_mrps;
       int32_t pitch_cdeg;
+            const char *mode_text;
 
       print_div = 0U;
       target_mrps = (int32_t)(g_speed_cmd_rps * 1000.0f);
-      speed_mrps = (int32_t)(BLDC_GetMeasuredSpeedRps() * 1000.0f);
+            speed_m1_mrps = (int32_t)(BLDC_GetMeasuredSpeedRps() * 1000.0f);
+            speed_m2_mrps = (int32_t)(BLDC_GetMeasuredSpeed2Rps() * 1000.0f);
       pitch_cdeg = (int32_t)(Core_GetPitchDeg() * 100.0f);
+            mode_text = (g_control_mode == CONTROL_MODE_BALANCE) ? "BAL" : "TEST";
 
-      printf("[RUN] target_mrps=%ld speed_mrps=%ld pitch_deg=%ld.%02ld\r\n",
+            printf("[RUN] mode=%s target_mrps=%ld speed1_mrps=%ld speed2_mrps=%ld pitch_deg=%ld.%02ld\r\n",
+              mode_text,
              (long)target_mrps,
-             (long)speed_mrps,
+              (long)speed_m1_mrps,
+              (long)speed_m2_mrps,
          (long)(pitch_cdeg / 100),
          (long)labs((long)(pitch_cdeg % 100)));
     }
@@ -316,7 +339,10 @@ void StartTask03(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    Core_BalanceStep1ms();
+    if (g_control_mode == CONTROL_MODE_BALANCE)
+    {
+      Core_BalanceStep1ms();
+    }
     osDelay(1);
   }
   /* USER CODE END StartTask03 */
@@ -588,6 +614,40 @@ static bool ParsePitchQueryCommand(const char *line)
          (strcmp(cmd, "PIDSTAT") == 0);
 }
 
+static bool ParseControlModeCommand(const char *line, ControlMode *mode)
+{
+  char cmd[8] = {0};
+
+  if ((line == NULL) || (mode == NULL))
+  {
+    return false;
+  }
+
+  if (sscanf(line, "%7s", cmd) != 1)
+  {
+    return false;
+  }
+
+  for (uint32_t i = 0U; i < sizeof(cmd) && cmd[i] != '\0'; i++)
+  {
+    cmd[i] = (char)toupper((unsigned char)cmd[i]);
+  }
+
+  if ((strcmp(cmd, "BAL") == 0) || (strcmp(cmd, "BALANCE") == 0))
+  {
+    *mode = CONTROL_MODE_BALANCE;
+    return true;
+  }
+
+  if ((strcmp(cmd, "TEST") == 0) || (strcmp(cmd, "MOTOR") == 0))
+  {
+    *mode = CONTROL_MODE_TEST;
+    return true;
+  }
+
+  return false;
+}
+
 static void ProcessUartCommandByte(uint8_t ch)
 {
   static char rx_line[16] = {0};
@@ -603,6 +663,7 @@ static void ProcessUartCommandByte(uint8_t ch)
       float kp = 0.0f;
       float ki = 0.0f;
       float kd = 0.0f;
+      ControlMode mode = g_control_mode;
 
       rx_line[rx_len] = '\0';
       if (ParsePitchOffsetCommand(rx_line, &offset_rad))
@@ -636,6 +697,18 @@ static void ProcessUartCommandByte(uint8_t ch)
         return;
       }
 
+      if (ParseControlModeCommand(rx_line, &mode))
+      {
+        g_control_mode = mode;
+        g_speed_cmd_rps = 0.0f;
+        BLDC_SetTargetSpeedRps(0.0f);
+        BLDC_SetTargetSpeed2Rps(0.0f);
+        Core_ResetBalanceIntegrator();
+        printf("[CMD] ACK mode=%s\r\n", (mode == CONTROL_MODE_BALANCE) ? "BAL" : "TEST");
+        rx_len = 0U;
+        return;
+      }
+
       if (ParseSteeringCommand(rx_line, &percent))
       {
         uint8_t steering_percent = (uint8_t)percent;
@@ -659,6 +732,13 @@ static void ProcessUartCommandByte(uint8_t ch)
         float cmd_rps = ((float)percent / 100.0f) * BLDC_CMD_MAX_ABS_RPS;
         uint16_t speed_cmd_raw = (uint16_t)((int16_t)(cmd_rps * 100.0f));
         osStatus_t queue_status;
+
+        if (g_control_mode != CONTROL_MODE_TEST)
+        {
+          printf("[CMD] ACK speed ignored in BAL mode, send TEST first\r\n");
+          rx_len = 0U;
+          return;
+        }
 
         g_motor_dir_sign = dir_sign;
         queue_status = osMessageQueuePut(Give_DataHandle, &speed_cmd_raw, 0U, 0U);
@@ -694,6 +774,13 @@ static void ProcessUartCommandByte(uint8_t ch)
         uint16_t speed_cmd_raw = (uint16_t)((int16_t)(cmd_rps * 100.0f));
         osStatus_t queue_status;
 
+        if (g_control_mode != CONTROL_MODE_TEST)
+        {
+          printf("[CMD] ACK speed ignored in BAL mode, send TEST first\r\n");
+          rx_len = 0U;
+          return;
+        }
+
         queue_status = osMessageQueuePut(Give_DataHandle, &speed_cmd_raw, 0U, 0U);
         if (queue_status == osOK)
         {
@@ -712,7 +799,7 @@ static void ProcessUartCommandByte(uint8_t ch)
       }
       else
       {
-        printf("[CMD] ACK reject input=%s (expect steering <0~100> | PZ <rad> | PID <kp> <ki> <kd> | PID? | 0~100 | fwd/rev | fwd 50/rev 50)\r\n", rx_line);
+        printf("[CMD] ACK reject input=%s (expect BAL/TEST | steering <0~100> | PZ <rad> | PID <kp> <ki> <kd> | PID? | 0~100 | fwd/rev | fwd 50/rev 50)\r\n", rx_line);
       }
 
       rx_len = 0U;

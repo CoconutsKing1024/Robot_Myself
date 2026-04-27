@@ -2428,7 +2428,7 @@ int mpu_get_dmp_state(unsigned char *enabled)
 
 
 /* This initialization is similar to the one in ak8975.c. */
-static int setup_compass(void)
+static int __attribute__((unused)) setup_compass(void)
 {
 #ifdef AK89xx_SECONDARY
     unsigned char data[4], akm_addr;
@@ -2643,10 +2643,14 @@ int mpu_get_compass_fsr(unsigned short *fsr)
 int mpu_lp_motion_interrupt(unsigned short thresh, unsigned char time,
     unsigned char lpa_freq)
 {
+#if defined MPU6500
     unsigned char data[3];
+#endif
 
     if (lpa_freq) {
+#if defined MPU6500
         unsigned char thresh_hw;
+#endif
 
 #if defined MPU6500
         /* 1LSb = 4mg. */

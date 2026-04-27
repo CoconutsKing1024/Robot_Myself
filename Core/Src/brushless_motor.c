@@ -46,7 +46,7 @@
 #define BLDC_STARTUP_OPEN_LOOP_VQ   (0.05f)
 #define BLDC_FORCE_OPEN_LOOP_STARTUP (0)
 #define BLDC_FORCE_OPEN_LOOP_ALWAYS  (0)
-#define BLDC_ENABLE_MOTOR2           (0)
+#define BLDC_ENABLE_MOTOR2           (1)
 #define BLDC_STARTUP_MIN_RPS        (1.0f)
 #define BLDC_STARTUP_MAX_RPS        (8.0f)
 #define BLDC_PWM_DUTY_MIN           (0.02f)
@@ -67,6 +67,7 @@ static float g_prev_mech_angle2_rad = 0.0f;
 static float g_speed_integral = 0.0f;
 static float g_speed2_integral = 0.0f;
 static float g_speed_prev_error = 0.0f;
+static float g_speed2_prev_error = 0.0f;
 static float g_m1_elec_offset_runtime = BLDC_M1_ELEC_OFFSET_RAD;
 static float g_m2_elec_offset_runtime = BLDC_M2_ELEC_OFFSET_RAD;
 static bool g_initialized = false;
@@ -455,6 +456,33 @@ static void BLDC_SetSpwmFromAlphaBeta(float v_alpha, float v_beta)
 	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (uint32_t)(duty_c * (float)period));
 }
 
+static void BLDC_SetSpwmFromAlphaBeta2(float v_alpha, float v_beta)
+{
+	float va;
+	float vb;
+	float vc;
+	float duty_a;
+	float duty_b;
+	float duty_c;
+	uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim4);
+
+	va = v_alpha;
+	vb = -0.5f * v_alpha + 0.8660254f * v_beta;
+	vc = -0.5f * v_alpha - 0.8660254f * v_beta;
+
+	duty_a = 0.5f + 0.5f * va;
+	duty_b = 0.5f + 0.5f * vb;
+	duty_c = 0.5f + 0.5f * vc;
+
+	duty_a = BLDC_Clamp(duty_a, BLDC_PWM_DUTY_MIN, BLDC_PWM_DUTY_MAX);
+	duty_b = BLDC_Clamp(duty_b, BLDC_PWM_DUTY_MIN, BLDC_PWM_DUTY_MAX);
+	duty_c = BLDC_Clamp(duty_c, BLDC_PWM_DUTY_MIN, BLDC_PWM_DUTY_MAX);
+
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, (uint32_t)(duty_a * (float)period));
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, (uint32_t)(duty_b * (float)period));
+	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, (uint32_t)(duty_c * (float)period));
+}
+
 /* 上电锁相后读取机械角，自动计算电角度零位偏置。 */
 static bool BLDC_CalibrateM1ElectricalZero(void)
 {
@@ -509,6 +537,52 @@ static bool BLDC_CalibrateM1ElectricalZero(void)
 	return true;
 }
 
+#if BLDC_ENABLE_MOTOR2
+static bool BLDC_CalibrateM2ElectricalZero(void)
+{
+	float v_alpha;
+	float v_beta;
+	float angle_rad;
+	float sin_sum = 0.0f;
+	float cos_sum = 0.0f;
+	float mean_mech_angle;
+	float offset;
+	uint32_t i;
+
+	BLDC_InvParkTransform(BLDC_ALIGN_VD, 0.0f, 0.0f, &v_alpha, &v_beta);
+	BLDC_SetSpwmFromAlphaBeta2(v_alpha, v_beta);
+	HAL_Delay(BLDC_ALIGN_SETTLE_MS);
+
+	for (i = 0U; i < BLDC_ALIGN_SAMPLE_COUNT; i++)
+	{
+		if (!BLDC_ReadMechanicalAngle2(&angle_rad))
+		{
+			BLDC_StopPwmOutput2();
+			return false;
+		}
+
+		sin_sum += sinf(angle_rad);
+		cos_sum += cosf(angle_rad);
+		HAL_Delay(BLDC_ALIGN_SAMPLE_DELAY_MS);
+	}
+
+	mean_mech_angle = atan2f(sin_sum, cos_sum);
+	if (mean_mech_angle < 0.0f)
+	{
+		mean_mech_angle += BLDC_TWO_PI;
+	}
+
+	offset = BLDC_NormalizeAngle(-BLDC_M2_ELEC_SIGN * mean_mech_angle * BLDC_POLE_PAIRS);
+	g_m2_elec_offset_runtime = offset;
+
+	BLDC_StopPwmOutput2();
+
+	printf("[BLDC] M2 elec zero calibrated, offset_mrad=%ld\r\n",
+	       (long)(offset * 1000.0f));
+	return true;
+}
+#endif
+
 /* 根据机械角度差分估算机械转速，并处理角度跨零点跳变。 */
 static float BLDC_EstimateSpeedRps(float current_angle, float prev_angle)
 {
@@ -560,6 +634,7 @@ void BLDC_Init(void)
 	g_speed_integral = 0.0f; // 清除速度环积分，避免开机时控制器输出过大导致电机抖动
 	g_speed2_integral = 0.0f; // 清除第二个无刷电机速度环积分，避免开机时控制器输出过大导致电机抖动
 	g_speed_prev_error = 0.0f;
+	g_speed2_prev_error = 0.0f;
 	g_m1_elec_offset_runtime = BLDC_M1_ELEC_OFFSET_RAD;
 	g_m2_elec_offset_runtime = BLDC_M2_ELEC_OFFSET_RAD;
 	g_startup_angle2_rad = 0.0f;
@@ -579,6 +654,14 @@ void BLDC_Init(void)
 		g_m1_elec_offset_runtime = BLDC_M1_ELEC_OFFSET_RAD;
 		printf("[BLDC] M1 elec zero calibration failed, use default offset\r\n");
 	}
+
+#if BLDC_ENABLE_MOTOR2
+	if (!BLDC_CalibrateM2ElectricalZero())
+	{
+		g_m2_elec_offset_runtime = BLDC_M2_ELEC_OFFSET_RAD;
+		printf("[BLDC] M2 elec zero calibration failed, use default offset\r\n");
+	}
+#endif
 
 	g_initialized = true; // 设置初始化完成标志，允许控制环开始工作
 }
@@ -785,6 +868,48 @@ void BLDC_ControlStep_1ms(void)
 
 	BLDC_InvParkTransform(v_d, v_q, electrical_angle, &v_alpha, &v_beta);
 	BLDC_SetSpwmFromAlphaBeta(v_alpha, v_beta);
+
+#if BLDC_ENABLE_MOTOR2
+	if (!BLDC_ReadMechanicalAngle2(&g_mech_angle2_rad))
+	{
+		BLDC_StopPwmOutput2();
+		g_speed2_integral = 0.0f;
+		g_speed2_prev_error = 0.0f;
+		return;
+	}
+
+	raw_speed = BLDC_EstimateSpeedRps(g_mech_angle2_rad, g_prev_mech_angle2_rad);
+	g_prev_mech_angle2_rad = g_mech_angle2_rad;
+	if (fabsf(raw_speed - g_measured_speed2_rps) > BLDC_SPEED_OUTLIER_RPS)
+	{
+		raw_speed = g_measured_speed2_rps;
+	}
+	g_measured_speed2_rps += BLDC_SPEED_LPF_ALPHA * (raw_speed - g_measured_speed2_rps);
+
+	speed_error = g_target_speed2_rps - g_measured_speed2_rps;
+	if (fabsf(g_target_speed2_rps) < 0.05f)
+	{
+		BLDC_StopPwmOutput2();
+		g_speed2_integral = 0.0f;
+		g_speed2_prev_error = 0.0f;
+	}
+	else
+	{
+		electrical_angle = BLDC_NormalizeAngle(BLDC_M2_ELEC_SIGN * g_mech_angle2_rad * BLDC_POLE_PAIRS + g_m2_elec_offset_runtime);
+		v_q = BLDC_PIController(speed_error,
+		                      BLDC_SPEED_PID_KP,
+		                      BLDC_SPEED_PID_KI,
+		                      BLDC_DT_S,
+		                      &g_speed2_integral);
+		speed_diff = (speed_error - g_speed2_prev_error) / BLDC_DT_S;
+		g_speed2_prev_error = speed_error;
+		v_q += BLDC_SPEED_PID_KD * speed_diff;
+		v_d = 0.0f;
+
+		BLDC_InvParkTransform(v_d, v_q, electrical_angle, &v_alpha, &v_beta);
+		BLDC_SetSpwmFromAlphaBeta2(v_alpha, v_beta);
+	}
+#endif
 }
 
 /* 返回最近一次估算的机械转速。 */

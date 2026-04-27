@@ -1,4 +1,4 @@
-/home/fanzeny/桌面/Robot_Myself/Core/Src/main.c:72:5:main	8	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/main.c:135:6:SystemClock_Config	88	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/main.c:189:6:HAL_TIM_PeriodElapsedCallback	16	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/main.c:207:6:Error_Handler	4	static,ignoring_inline_asm
+/home/coco/Robot_Myself/Core/Src/main.c:72:5:main	8	static
+/home/coco/Robot_Myself/Core/Src/main.c:135:6:SystemClock_Config	88	static
+/home/coco/Robot_Myself/Core/Src/main.c:189:6:HAL_TIM_PeriodElapsedCallback	16	static
+/home/coco/Robot_Myself/Core/Src/main.c:207:6:Error_Handler	4	static

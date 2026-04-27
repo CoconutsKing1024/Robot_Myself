@@ -1,5 +1,0 @@
-/home/fanzeny/桌面/Robot_Myself/Core/Src/adc.c:36:6:MX_ADC2_Init	24	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/adc.c:110:6:HAL_ADC_MspInit	48	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/adc.c:159:6:HAL_ADC_MspDeInit	16	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/adc.c:188:6:ADC2_StartSampling	8	static
-/home/fanzeny/桌面/Robot_Myself/Core/Src/adc.c:204:10:ADC2_GetRaw	16	static

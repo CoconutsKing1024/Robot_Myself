@@ -39,6 +39,30 @@ static uint32_t g_imu_stale_ms = 0U;
 static uint32_t g_imu_init_stage = 0U;
 static int32_t g_imu_init_last_ret = 0;
 
+static bool Core_ProbeMpuWhoAmI(uint8_t *whoami, uint8_t *detected_addr)
+{
+  static const uint8_t candidate_addrs[] = {0x68U, 0x69U};
+  uint32_t i;
+
+  if ((whoami == NULL) || (detected_addr == NULL))
+  {
+    return false;
+  }
+
+  for (i = 0U; i < (sizeof(candidate_addrs) / sizeof(candidate_addrs[0])); i++)
+  {
+    uint16_t addr = (uint16_t)(candidate_addrs[i] << 1);
+    if ((HAL_I2C_IsDeviceReady(&hi2c3, addr, 3U, 20U) == HAL_OK) &&
+        (HAL_I2C_Mem_Read(&hi2c3, addr, 0x75U, I2C_MEMADD_SIZE_8BIT, whoami, 1U, 30U) == HAL_OK))
+    {
+      *detected_addr = candidate_addrs[i];
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static float Core_Clamp(float value, float min_value, float max_value)
 {
   if (value < min_value)
@@ -99,8 +123,10 @@ static void Core_InitMpu(void)
 {
   struct int_param_s int_param = {0};
   uint8_t whoami = 0U;
+  uint8_t detected_addr = 0U;
   uint32_t i2c68_ok = 0U;
   uint32_t i2c69_ok = 0U;
+  uint32_t i2c_err = 0U;
   int ret = 0;
 
   g_imu_init_stage = 1U;
@@ -109,15 +135,25 @@ static void Core_InitMpu(void)
   i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
   i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
 
-  if ((i2c68_ok == 1U) &&
-      (HAL_I2C_Mem_Read(&hi2c3, (0x68U << 1), 0x75U, I2C_MEMADD_SIZE_8BIT, &whoami, 1U, 20U) == HAL_OK))
+  if (!Core_ProbeMpuWhoAmI(&whoami, &detected_addr))
   {
-    printf("[CORE] probe 0x68 whoami=0x%02X\r\n", whoami);
+    HAL_I2C_DeInit(&hi2c3);
+    HAL_Delay(2U);
+    MX_I2C3_Init();
+    HAL_Delay(2U);
+
+    i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
+    i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
   }
-  if ((i2c69_ok == 1U) &&
-      (HAL_I2C_Mem_Read(&hi2c3, (0x69U << 1), 0x75U, I2C_MEMADD_SIZE_8BIT, &whoami, 1U, 20U) == HAL_OK))
+
+  if (Core_ProbeMpuWhoAmI(&whoami, &detected_addr))
   {
-    printf("[CORE] probe 0x69 whoami=0x%02X\r\n", whoami);
+    printf("[CORE] probe 0x%02X whoami=0x%02X\r\n", detected_addr, whoami);
+  }
+  else
+  {
+    i2c_err = HAL_I2C_GetError(&hi2c3);
+    printf("[CORE] probe fail i2c3_err=0x%08lX\r\n", (unsigned long)i2c_err);
   }
   printf("[CORE] i2c_probe_imu 0x68=%lu 0x69=%lu\r\n",
          (unsigned long)i2c68_ok,
