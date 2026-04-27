@@ -69,6 +69,7 @@ static float g_speed_cmd_rps = BLDC_CMD_DEFAULT_RPS;
 static int8_t g_motor_dir_sign = 1;
 static uint8_t g_uart2_rx_dma_buf[64];
 static uint8_t g_uart2_rx_dma_read_idx = 0U;
+volatile char g_stack_overflow_task[16] = {0};
 
 typedef enum
 {
@@ -90,14 +91,14 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t Read_AlleadHandle;
 const osThreadAttr_t Read_Allead_attributes = {
   .name = "Read_Allead",
-  .stack_size = 256 * 4,
+  .stack_size = 768 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for Balance */
 osThreadId_t BalanceHandle;
 const osThreadAttr_t Balance_attributes = {
   .name = "Balance",
-  .stack_size = 256 * 4,
+  .stack_size = 384 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for Run_By_Cmd */
@@ -843,8 +844,17 @@ static bool PollUartSpeedCommandDma(void)
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
+  uint32_t i = 0U;
+
   (void)xTask;
-  (void)pcTaskName;
+  if (pcTaskName != NULL)
+  {
+    for (i = 0U; i < (sizeof(g_stack_overflow_task) - 1U) && pcTaskName[i] != '\0'; i++)
+    {
+      g_stack_overflow_task[i] = pcTaskName[i];
+    }
+    g_stack_overflow_task[i] = '\0';
+  }
   __disable_irq();
   for(;;)
   {

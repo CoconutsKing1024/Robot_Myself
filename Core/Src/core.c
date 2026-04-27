@@ -21,6 +21,8 @@
 #define CORE_BALANCE_INTEGRAL_LIMIT      (3.0f)
 #define CORE_DMP_FIFO_RATE_HZ           (100U)
 #define CORE_DMP_FEATURES               (DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL)
+#define CORE_BOOT_PITCH_ZERO_SAMPLES    (80U)
+#define CORE_BOOT_PITCH_ZERO_TIMEOUT_MS (1500U)
 
 static float g_pitch_rad = 0.0f;
 static float g_pitch_deg = 0.0f;
@@ -38,6 +40,8 @@ static uint32_t g_imu_fail_count = 0U;
 static uint32_t g_imu_stale_ms = 0U;
 static uint32_t g_imu_init_stage = 0U;
 static int32_t g_imu_init_last_ret = 0;
+
+static float Core_QuaternionToPitchRad(const long *quat);
 
 static bool Core_ProbeMpuWhoAmI(uint8_t *whoami, uint8_t *detected_addr)
 {
@@ -61,6 +65,94 @@ static bool Core_ProbeMpuWhoAmI(uint8_t *whoami, uint8_t *detected_addr)
   }
 
   return false;
+}
+
+static uint16_t Core_RowToScale(const int8_t row[3])
+{
+  if (row[0] > 0)
+  {
+    return 0U;
+  }
+  if (row[0] < 0)
+  {
+    return 4U;
+  }
+  if (row[1] > 0)
+  {
+    return 1U;
+  }
+  if (row[1] < 0)
+  {
+    return 5U;
+  }
+  if (row[2] > 0)
+  {
+    return 2U;
+  }
+  if (row[2] < 0)
+  {
+    return 6U;
+  }
+  return 7U;
+}
+
+static uint16_t Core_OrientationMatrixToScalar(const int8_t mtx[9])
+{
+  uint16_t scalar;
+
+  scalar = Core_RowToScale(&mtx[0]);
+  scalar |= (uint16_t)(Core_RowToScale(&mtx[3]) << 3);
+  scalar |= (uint16_t)(Core_RowToScale(&mtx[6]) << 6);
+
+  return scalar;
+}
+
+static bool Core_AutoZeroPitchAtBoot(void)
+{
+  short gyro[3] = {0};
+  short accel[3] = {0};
+  long quat[4] = {0};
+  unsigned long timestamp = 0UL;
+  unsigned char more = 0U;
+  short sensors = 0;
+  uint32_t ok_samples = 0U;
+  uint32_t elapsed_ms = 0U;
+  float pitch_sum = 0.0f;
+
+  if (!g_mpu_ready)
+  {
+    return false;
+  }
+
+  while ((ok_samples < CORE_BOOT_PITCH_ZERO_SAMPLES) && (elapsed_ms < CORE_BOOT_PITCH_ZERO_TIMEOUT_MS))
+  {
+    if (dmp_read_fifo(gyro, accel, quat, &timestamp, &sensors, &more) == 0)
+    {
+      pitch_sum += Core_QuaternionToPitchRad(quat);
+      ok_samples++;
+    }
+    else
+    {
+      HAL_Delay(2U);
+      elapsed_ms += 2U;
+    }
+  }
+
+  if (ok_samples == 0U)
+  {
+    return false;
+  }
+
+  g_pitch_offset_rad = pitch_sum / (float)ok_samples;
+  g_pitch_integral = 0.0f;
+  g_pitch_prev_error = 0.0f;
+  g_pitch_rad = 0.0f;
+  g_pitch_deg = 0.0f;
+
+  printf("[CORE] auto zero pitch_offset_rad=%.4f (%lu samples)\r\n",
+         (double)g_pitch_offset_rad,
+         (unsigned long)ok_samples);
+  return true;
 }
 
 static float Core_Clamp(float value, float min_value, float max_value)
@@ -124,9 +216,16 @@ static void Core_InitMpu(void)
   struct int_param_s int_param = {0};
   uint8_t whoami = 0U;
   uint8_t detected_addr = 0U;
+  static const int8_t orientation_mtx[9] = {
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+  };
+  uint16_t orientation_scalar = 0U;
   uint32_t i2c68_ok = 0U;
   uint32_t i2c69_ok = 0U;
   uint32_t i2c_err = 0U;
+  uint32_t probe_try = 0U;
   int ret = 0;
 
   g_imu_init_stage = 1U;
@@ -135,18 +234,19 @@ static void Core_InitMpu(void)
   i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
   i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 2U, 10U) == HAL_OK) ? 1U : 0U;
 
-  if (!Core_ProbeMpuWhoAmI(&whoami, &detected_addr))
+  for (probe_try = 0U; probe_try < 5U; probe_try++)
   {
-    HAL_I2C_DeInit(&hi2c3);
+    if (Core_ProbeMpuWhoAmI(&whoami, &detected_addr))
+    {
+      break;
+    }
     HAL_Delay(2U);
-    MX_I2C3_Init();
-    HAL_Delay(2U);
-
-    i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
-    i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
   }
 
-  if (Core_ProbeMpuWhoAmI(&whoami, &detected_addr))
+  i2c68_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x68U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
+  i2c69_ok = (HAL_I2C_IsDeviceReady(&hi2c3, (0x69U << 1), 3U, 20U) == HAL_OK) ? 1U : 0U;
+
+  if (probe_try < 5U)
   {
     printf("[CORE] probe 0x%02X whoami=0x%02X\r\n", detected_addr, whoami);
   }
@@ -193,7 +293,8 @@ static void Core_InitMpu(void)
   }
 
   g_imu_init_stage = 4U;
-  ret = dmp_set_orientation(0U);
+  orientation_scalar = Core_OrientationMatrixToScalar(orientation_mtx);
+  ret = dmp_set_orientation(orientation_scalar);
   if (ret != 0)
   {
     g_imu_init_stage = 14U;
@@ -202,6 +303,7 @@ static void Core_InitMpu(void)
     g_mpu_ready = false;
     return;
   }
+  printf("[CORE] DMP orientation scalar=0x%03X\r\n", orientation_scalar);
 
   g_imu_init_stage = 5U;
   ret = dmp_enable_feature(CORE_DMP_FEATURES);
@@ -262,6 +364,16 @@ void Core_ControlInit(void)
   g_imu_ok_count = 0U;
   g_imu_fail_count = 0U;
   g_imu_stale_ms = 0U;
+
+  if (g_mpu_ready)
+  {
+    if (!Core_AutoZeroPitchAtBoot())
+    {
+      printf("[CORE] auto zero skipped, keep pitch_offset_rad=%.4f\r\n",
+             (double)g_pitch_offset_rad);
+    }
+  }
+
   g_core_inited = true;
 }
 
