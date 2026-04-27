@@ -33,8 +33,8 @@
 #define BLDC_ALIGN_SETTLE_MS        (300U)
 #define BLDC_ALIGN_SAMPLE_COUNT     (32U)
 #define BLDC_ALIGN_SAMPLE_DELAY_MS  (2U)
-#define BLDC_STARTUP_ASSIST_VQ_MIN  (0.16f)
-#define BLDC_STARTUP_ASSIST_VQ_MAX  (0.45f)
+#define BLDC_STARTUP_ASSIST_VQ_MIN  (0.28f)
+#define BLDC_STARTUP_ASSIST_VQ_MAX  (0.60f)
 #define BLDC_STARTUP_ASSIST_MIN_RPS (1.2f)
 #define BLDC_STARTUP_ASSIST_MAX_RPS (12.0f)
 #define BLDC_STARTUP_ASSIST_ENTRY_RPS (0.25f)
@@ -55,6 +55,7 @@
 #define BLDC_START_ASSIST_STALL_RPS  (0.6f)
 #define BLDC_START_ASSIST_MAX_MS     (0U)
 #define BLDC_BRINGUP_FORCE_OPEN_LOOP (0)
+#define BLDC_START_ASSIST_LOWSPD_VQ_FLOOR (0.40f)
 
 static float g_target_speed_rps = 0.0f;
 static float g_target_speed2_rps = 0.0f;
@@ -687,6 +688,16 @@ void BLDC_SetTargetSpeed2Rps(float target_rps)
 	g_target_speed2_rps = target_rps;
 }
 
+float BLDC_GetTargetSpeedRps(void)
+{
+	return g_target_speed_rps;
+}
+
+float BLDC_GetTargetSpeed2Rps(void)
+{
+	return g_target_speed2_rps;
+}
+
 /* 执行一次速度环与角度同步控制，并输出到三相 PWM。 */
 void BLDC_ControlStep_1ms(void)
 {
@@ -792,6 +803,13 @@ void BLDC_ControlStep_1ms(void)
 		open_vq = dir * (BLDC_STARTUP_ASSIST_VQ_MIN +
 			(BLDC_STARTUP_ASSIST_VQ_MAX - BLDC_STARTUP_ASSIST_VQ_MIN) *
 			BLDC_Clamp(target_abs / BLDC_STARTUP_ASSIST_MAX_RPS, 0.0f, 1.0f));
+		if (target_abs <= 1.5f)
+		{
+			if (fabsf(open_vq) < BLDC_START_ASSIST_LOWSPD_VQ_FLOOR)
+			{
+				open_vq = dir * BLDC_START_ASSIST_LOWSPD_VQ_FLOOR;
+			}
+		}
 		closed_vq = BLDC_PIController(speed_error,
 		                      BLDC_SPEED_PID_KP,
 		                      BLDC_SPEED_PID_KI,

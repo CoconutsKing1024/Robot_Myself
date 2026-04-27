@@ -297,23 +297,38 @@ void StartTask02(void *argument)
     if (++print_div >= 20U)
     {
       int32_t target_mrps;
-            int32_t speed_m1_mrps;
-            int32_t speed_m2_mrps;
+      int32_t target_m1_mrps;
+      int32_t speed_m1_mrps;
+      int32_t speed_m2_mrps;
+      int32_t vq_milli;
+      uint32_t raw_ok;
+      uint16_t raw_m1;
+      uint32_t assist_on;
       int32_t pitch_cdeg;
-            const char *mode_text;
+      const char *mode_text;
 
       print_div = 0U;
       target_mrps = (int32_t)(g_speed_cmd_rps * 1000.0f);
-            speed_m1_mrps = (int32_t)(BLDC_GetMeasuredSpeedRps() * 1000.0f);
-            speed_m2_mrps = (int32_t)(BLDC_GetMeasuredSpeed2Rps() * 1000.0f);
+      target_m1_mrps = (int32_t)(BLDC_GetTargetSpeedRps() * 1000.0f);
+      speed_m1_mrps = (int32_t)(BLDC_GetMeasuredSpeedRps() * 1000.0f);
+      speed_m2_mrps = (int32_t)(BLDC_GetMeasuredSpeed2Rps() * 1000.0f);
+      vq_milli = (int32_t)(BLDC_GetM1AppliedVq() * 1000.0f);
+      raw_ok = BLDC_GetLastRawAngleM1Valid() ? 1U : 0U;
+      raw_m1 = BLDC_GetLastRawAngleM1();
+      assist_on = BLDC_IsM1AssistModeActive() ? 1U : 0U;
       pitch_cdeg = (int32_t)(Core_GetPitchDeg() * 100.0f);
-            mode_text = (g_control_mode == CONTROL_MODE_BALANCE) ? "BAL" : "TEST";
+      mode_text = (g_control_mode == CONTROL_MODE_BALANCE) ? "BAL" : "TEST";
 
-            printf("[RUN] mode=%s target_mrps=%ld speed1_mrps=%ld speed2_mrps=%ld pitch_deg=%ld.%02ld\r\n",
-              mode_text,
-             (long)target_mrps,
-              (long)speed_m1_mrps,
-              (long)speed_m2_mrps,
+      printf("[RUN] m=%s cmd=%ld t1=%ld s1=%ld s2=%ld raw_ok=%lu raw=%u as=%lu vq=%ld p=%ld.%02ld\r\n",
+         mode_text,
+         (long)target_mrps,
+         (long)target_m1_mrps,
+         (long)speed_m1_mrps,
+         (long)speed_m2_mrps,
+         (unsigned long)raw_ok,
+         (unsigned int)raw_m1,
+         (unsigned long)assist_on,
+         (long)vq_milli,
          (long)(pitch_cdeg / 100),
          (long)labs((long)(pitch_cdeg % 100)));
     }

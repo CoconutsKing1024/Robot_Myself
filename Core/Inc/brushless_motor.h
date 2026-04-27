@@ -20,6 +20,12 @@ void BLDC_SetTargetSpeedRps(float target_rps);
 /* 设置第二个无刷电机目标机械转速，单位为 rps。 */
 void BLDC_SetTargetSpeed2Rps(float target_rps);
 
+/* 获取电机1当前目标机械转速，单位为 rps。 */
+float BLDC_GetTargetSpeedRps(void);
+
+/* 获取电机2当前目标机械转速，单位为 rps。 */
+float BLDC_GetTargetSpeed2Rps(void);
+
 /* 1ms 周期运行一次的 FOC 控制主函数。 */
 void BLDC_ControlStep_1ms(void);
 
